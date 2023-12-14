@@ -128,6 +128,17 @@ impl Editor {
             Key::Up | Key::Down | Key::Left | Key::Right
             | Key::PageUp | Key::PageDown | Key::End
             | Key::Home => self.move_cursor(pressed_key),
+            Key::Char(c) => {
+                self.document.insert(&self.cursor_position, c);
+                self.move_cursor(Key::Right);
+            },
+            Key::Delete => self.document.delete(&self.cursor_position),
+            Key::Backspace => {
+                if self.cursor_position.x > 0 || self.cursor_position.y > 0 {
+                    self.move_cursor(Key::Left);
+                    self.document.delete(&self.cursor_position);
+                }
+            }
             _ => ()
         }
         Ok(())
