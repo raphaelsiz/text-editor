@@ -40,7 +40,7 @@ pub struct Editor {
 impl Editor {
     pub fn default() -> Self {
         let args: Vec<String> = env::args().collect();
-        let mut initial_status = String::from("Ctrl-C = save and quit | Ctrl-S = save | Ctrl-X = quit without saving");
+        let mut initial_status = String::from("Ctrl-S = save | Ctrl-X = quit");
         let document = if args.len() > 1 {
             let file_name = &args[1];
             let doc = Document::open(&file_name);
@@ -94,11 +94,12 @@ impl Editor {
     fn draw_status_bar(&self) {
         let mut status;
         let width = self.terminal.size().width as usize;
+        let modified_indicator = if self.document.is_dirty() {"*"} else {""};
         let mut file_name = if let Some(name) = &self.document.file_name {
             name.clone()
         } else {"[No Name]".to_string()};
         file_name.truncate(20); //todo: change this based on width
-        status = format!("{} - {} lines", file_name, self.document.len());
+        status = format!("{}{} - {} lines", file_name, modified_indicator, self.document.len());
         let line_indicator = format!("{}/{}",self.cursor_position.y.saturating_add(1), self.document.len());
         let len = status.len() + line_indicator.len();
         if width > len {
@@ -124,7 +125,21 @@ impl Editor {
     fn process_keypress(&mut self) -> Result<(), std::io::Error> {
         let pressed_key = Terminal::read_key()?;
         match pressed_key {
-            Key::Ctrl('c') => self.should_quit = true,
+            Key::Ctrl('x') => {
+                if self.document.is_dirty() {
+                    let new_name = self.prompt("Press Esc to quit without saving, Ctrl+C to cancel. Save as: ", Some(&self.document.file_name.clone().expect("Error:")));
+                    if let Ok(Some(name)) = new_name {
+                        self.document.file_name = Some(name);
+                    //still check that it's Some bc otherwise we don't save
+                        self.save();
+                    }
+                }
+                
+                //perhaps insert a way to not quit
+                self.should_quit = true;
+                
+            },
+            Key::Ctrl('s') => self.save(),
             Key::Up | Key::Down | Key::Left | Key::Right
             | Key::PageUp | Key::PageDown | Key::End
             | Key::Home => self.move_cursor(pressed_key),
@@ -142,6 +157,48 @@ impl Editor {
             _ => ()
         }
         Ok(())
+    }
+    fn prompt(&mut self, prompt: &str, default: Option<&str>) -> Result<Option<String>, std::io::Error> {
+        let mut result = match default {
+            Some(text) => String::from(text),
+            None => String::new()
+        };
+        loop {
+            self.status_message = StatusMessage::from(format!("{} {}", prompt, result));
+            self.refresh_screen()?;
+            match Terminal::read_key()? {
+                Key::Backspace => {
+                    if !result.is_empty() {
+                        result.truncate(result.len() - 1);
+                    }
+                },
+                Key::Char('\n') => break,
+                Key::Char(c) => {
+                    if !c.is_control() {
+                        result.push(c);
+                    }
+                },
+                Key::Esc => return Ok(None),
+                _ => ()
+            }
+        }
+        self.status_message = StatusMessage::from(String::new());
+        Ok(Some(result))
+    }
+    fn save(&mut self) {
+        if self.document.file_name.is_none() {
+            let new_name = self.prompt("Save as:", None).unwrap_or(None);
+            if new_name.is_none() {
+                self.status_message = StatusMessage::from("Save aborted.".to_string());
+                return;
+            }
+            self.document.file_name = new_name;
+        }
+        if self.document.save().is_ok() {
+            self.status_message = StatusMessage::from("File saved successfully!".to_string());
+        } else {
+            self.status_message = StatusMessage::from("Error writing file!".to_string());
+        }
     }
     fn move_cursor(&mut self, key: Key) {
         let terminal_height = self.terminal.size().height as usize;
