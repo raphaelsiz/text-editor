@@ -148,7 +148,7 @@ impl Editor {
                 self.move_cursor(Key::Right);
             },
             Key::Delete => self.document.delete(&self.cursor_position),
-            Key::Backspace => {
+            Key::Backspace | Key.Ctrl('h') => {
                 if self.cursor_position.x > 0 || self.cursor_position.y > 0 {
                     self.move_cursor(Key::Left);
                     self.document.delete(&self.cursor_position);
@@ -167,7 +167,7 @@ impl Editor {
             self.status_message = StatusMessage::from(format!("{} {}", prompt, result));
             self.refresh_screen()?;
             match Terminal::read_key()? {
-                Key::Backspace => {
+                Key::Backspace | Key::Ctrl('h') => {
                     if !result.is_empty() {
                         result.truncate(result.len() - 1);
                     }
